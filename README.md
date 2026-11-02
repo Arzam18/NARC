@@ -47,6 +47,19 @@ Estimated strength: about 3600 CCRL Blitz (gauntlet against nine CCRL-rated engi
 Requires g++ 12 or newer (MSYS2 UCRT64 on Windows). The network `networks/narc-genesys.nnue`
 (DRNNUE03, 16 king buckets, trained on 249M positions) is embedded in the executable; `NET=<file>` picks another.
 
+
+## Versions
+
+| Engine | Rating (CCRL Blitz) | Official CCRL (40/15) rating |
+|---|---|---| 
+| `NARC Engine` | 2950 (approx)  | Not published for Testing |
+| `NARC NEXT 4.1 ` | 3400 (approx) | 3320 (rank #168 )| 
+| `NARC Atlas 4.5` | 3500 (approx) | Private | 
+| `NARC Genesys 5.0 ` | 3600 (approx)| Pending | 
+
+
+
+
 ## Commands
 
 | Command | Purpose |

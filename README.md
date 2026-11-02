@@ -1,7 +1,14 @@
 # NARC Genesys
 
 <p align="center"><img src="assets/narc-genesys-banner.png" alt="NARC Genesys" width="640"></p>
-![Strong 3500 +] ![HomeMade] ![License][![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)]
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Strength-3500%2B-brightgreen" alt="Strength: 3500+">
+  <img src="https://img.shields.io/badge/Homemade-orange" alt="Homemade">
+  <a href="https://github.com/Madushan996/NARC/releases/tag/v5.0"><img src="https://img.shields.io/github/v/release/Madushan996/NARC" alt="Release"></a>
+  <a href="https://github.com/Madushan996/NARC/releases/tag/v5.0"><img src="https://img.shields.io/github/downloads/Madushan996/NARC/v5.0/total" alt="Downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+</p>
 
 NARC Genesys 5.0
 UCI chess engine by Madushan Dissanayake, Sri Lanka

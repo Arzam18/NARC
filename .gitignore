@@ -1,15 +1,5 @@
-<<<<<<< HEAD
 build/
 *.exe
 /narc-genesys
 release/
 __pycache__/
-=======
-dist/
-build/
-*.o
-*.log
-tests/diagnostic_games.pgn
-__pycache__/
-.pytest_cache/
->>>>>>> 2d83a7878e76fedee5640e667381d4f61c9af89c

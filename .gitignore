@@ -1,0 +1,5 @@
+build/
+*.exe
+/narc-genesys
+release/
+__pycache__/

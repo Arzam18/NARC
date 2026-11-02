@@ -1,0 +1,29 @@
+// Windows resources for NARC Genesys: the icon and version information.
+1 ICON "narc-genesys.ico"
+
+1 VERSIONINFO
+FILEVERSION 5,0,0,0
+PRODUCTVERSION 5,0,0,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Madushan Dissanayake"
+      VALUE "FileDescription", "NARC Genesys chess engine"
+      VALUE "FileVersion", "5.0"
+      VALUE "InternalName", "narc-genesys"
+      VALUE "LegalCopyright", "Copyright (C) 2026 Madushan Dissanayake, Sri Lanka"
+      VALUE "OriginalFilename", "NARC-Genesys-5.0.exe"
+      VALUE "ProductName", "NARC Genesys"
+      VALUE "ProductVersion", "5.0"
+      VALUE "Comments", "UCI chess engine with NNUE evaluation. Country: Sri Lanka."
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

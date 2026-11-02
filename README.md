@@ -1,6 +1,7 @@
 # NARC Genesys
 
 <p align="center"><img src="assets/narc-genesys-banner.png" alt="NARC Genesys" width="640"></p>
+![Strong 3500 +] ![HomeMade] ![License][![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)]
 
 NARC Genesys 5.0
 UCI chess engine by Madushan Dissanayake, Sri Lanka

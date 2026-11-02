@@ -76,3 +76,27 @@ Requires g++ 12 or newer (MSYS2 UCRT64 on Windows). The network `networks/narc-g
 | `narc-genesys perftsuite` | perft on 7 standard positions with known counts (exit code 1 on any mismatch) |
 | `narc-genesys perft <depth>` | perft divide from the start position |
 | UCI: `d`, `eval`, `perft <depth>`, `bench [depth]` | board and key, evaluation, divide, bench |
+
+## Originality
+
+NARC Genesys is an original engine. Its source code was written from scratch for this project. It is not a fork
+or clone of another engine, and it contains no code copied from other engines. Its network was trained only on
+positions labelled by my own engines (see Credits below). Like nearly every modern engine, it uses well-known,
+published techniques: alpha-beta search with aspiration windows, late move reductions, null-move and futility
+pruning, singular extensions, correction history, Lazy SMP, magic bitboards, and an NNUE evaluation with king
+and material buckets. These are written in my own code, and the network uses its own file format (DRNNUE03).
+Two parts follow Stockfish's design closely; they are credited below.
+
+## Credits
+
+- **Stockfish** ([official-stockfish/Stockfish](https://github.com/official-stockfish/Stockfish), GPL-3.0): the
+  transposition-table replacement scheme (three 10-byte entries per 32-byte bucket, generation ageing) and the
+  static exchange evaluation (`see_ge`) follow Stockfish's design. They are re-implemented in my own code. No
+  Stockfish source code, network or evaluation labels are used.
+- **Lichess open database** ([database.lichess.org](https://database.lichess.org), CC0): part of the training
+  corpus is filtered, high-quality positions from human games on Lichess. Only the board positions were taken.
+  Every position was relabelled by my own engines (the best NARC Genesys version at that point), so no
+  evaluations from Lichess or from any other engine are in the training data. The rest of the corpus is NARC's
+  own self-play.
+- The perft reference positions used by `perftsuite` (and by part of `bench`) are from the
+  [Chess Programming Wiki](https://www.chessprogramming.org/Perft_Results).

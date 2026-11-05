@@ -10,7 +10,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
 </p>
 
-NARC Genesys 5.1
+## NARC Genesys 5.1 Fix
+
+During long time control testing, I have found that version 5.0 misjudges some positions.
+This quick update is mainly to address that issue. More information about the fix which includes retraining a bigger 
+network given below 
+
+
 UCI chess engine by Madushan Dissanayake, Sri Lanka
 
 NARC Genesys is the next major public release of my NARC engine project (the previous release was NARC NEXT

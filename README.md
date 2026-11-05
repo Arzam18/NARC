@@ -12,9 +12,9 @@
 
 ## NARC Genesys 5.1 Fix
 
-During long time control testing, I have found that version 5.0 misjudges some positions.
+**During long time control testing, I have found that version 5.0 misjudges some positions.
 This quick update is mainly to address that issue. More information about the fix which includes retraining a bigger 
-network given below 
+network given below**  
 
 
 UCI chess engine by Madushan Dissanayake, Sri Lanka

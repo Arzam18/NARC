@@ -3,14 +3,14 @@
 <p align="center"><img src="assets/narc-genesys-banner.png" alt="NARC Genesys" width="640"></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Strength-3500%2B-brightgreen" alt="Strength: 3500+">
+  <img src="https://img.shields.io/badge/Strength-3600%2B-brightgreen" alt="Strength: 3600+">
   <img src="https://img.shields.io/badge/Homemade-orange" alt="Homemade">
-  <a href="https://github.com/Madushan996/NARC/releases/tag/v5.0"><img src="https://img.shields.io/github/v/release/Madushan996/NARC" alt="Release"></a>
-  <a href="https://github.com/Madushan996/NARC/releases/tag/v5.0"><img src="https://img.shields.io/github/downloads/Madushan996/NARC/v5.0/total" alt="Downloads"></a>
+  <a href="https://github.com/Madushan996/NARC/releases/tag/v5.1"><img src="https://img.shields.io/github/v/release/Madushan996/NARC" alt="Release"></a>
+  <a href="https://github.com/Madushan996/NARC/releases/tag/v5.1"><img src="https://img.shields.io/github/downloads/Madushan996/NARC/v5.1/total" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
 </p>
 
-NARC Genesys 5.0
+NARC Genesys 5.1
 UCI chess engine by Madushan Dissanayake, Sri Lanka
 
 NARC Genesys is the next major public release of my NARC engine project (the previous release was NARC NEXT
@@ -43,17 +43,29 @@ NARC Genesys was trained on only about 249M high-quality positions, and yet it c
 its estimated strength is about 3600 on the CCRL Blitz scale. The engine has not yet hit a strength wall;
 further development is currently limited by access to compute resources and by my own understanding.
 
-Estimated strength: about 3600 CCRL Blitz (gauntlet against nine CCRL-rated engines at 8+0.08, 1,736 games).
+Estimated strength: about 3608 CCRL Blitz (gauntlet against nine CCRL-rated engines at 8+0.08, 1,980 games).
+Against NARC Genesys 5.0: +29.9 +- 13.8 Elo (SPRT, 756 games at 8+0.08).
+
+## What's new in 5.1
+
+- **A wider network:** 1024 neurons per perspective instead of 256, trained from scratch on the same 249M positions
+  as 5.0, with the same labels from my own engines. It evaluates positions more accurately (validation loss
+  0.014254 against 5.0's 0.014808) but runs 25-40% slower; CPUs with a large cache lose the least speed.
+- **ThreatHist:** the history that orders quiet moves is kept separately depending on whether the moving piece's
+  square and its destination square are attacked, so better moves are tried first (+13.2 +- 12.7 Elo on its own,
+  892 games). `setoption name ThreatHist value false` gives the 5.0 search back.
 
 ## Build
 
 ```bash
 ./build.sh native build/narc-genesys.exe   # targets: native, avx512, bmi2 (PEXT), avx2, sse42, generic, debug
-./release.sh                               # every target into release/NARC-Genesys-5.0/, checked and zipped
+./release.sh                               # every target into release/NARC-Genesys-5.1/, checked and zipped
 ```
 
-Requires g++ 12 or newer (MSYS2 UCRT64 on Windows). The network `networks/narc-genesys.nnue`
-(DRNNUE03, 16 king buckets, trained on 249M positions) is embedded in the executable; `NET=<file>` picks another.
+Requires g++ 12 or newer (MSYS2 UCRT64 on Windows). The network `networks/narc-genesys.nnue` (DRNNUE03,
+768 x 16 king buckets -> 1024 x 2 -> 8 output buckets, trained on 249M positions) is embedded in the executable;
+`NET=<file>` picks another. Networks of any hidden width of 256, 512, 768 or 1024 load with `EvalFile`, so 5.0's
+network still works.
 
 
 ## Versions
@@ -64,6 +76,7 @@ Requires g++ 12 or newer (MSYS2 UCRT64 on Windows). The network `networks/narc-g
 | `NARC NEXT 4.1 ` | 3400 (approx) | 3320 (rank #168 )| 
 | `NARC Atlas 4.5` | 3500 (approx) | Private | 
 | `NARC Genesys 5.0 ` | 3600 (approx)| Pending | 
+| `NARC Genesys 5.1 ` | 3608 (approx)| Pending | 
 
 
 
@@ -72,7 +85,7 @@ Requires g++ 12 or newer (MSYS2 UCRT64 on Windows). The network `networks/narc-g
 
 | Command | Purpose |
 |---|---|
-| `narc-genesys bench [depth]` | fixed-depth search over 12 positions; the node total is the search signature (1,405,722 at depth 12) |
+| `narc-genesys bench [depth]` | fixed-depth search over 12 positions; the node total is the search signature (1,146,093 at depth 12) |
 | `narc-genesys perftsuite` | perft on 7 standard positions with known counts (exit code 1 on any mismatch) |
 | `narc-genesys perft <depth>` | perft divide from the start position |
 | UCI: `d`, `eval`, `perft <depth>`, `bench [depth]` | board and key, evaluation, divide, bench |
@@ -83,20 +96,25 @@ NARC Genesys is an original engine. Its source code was written from scratch for
 or clone of another engine, and it contains no code copied from other engines. Its network was trained only on
 positions labelled by my own engines (see Credits below). Like nearly every modern engine, it uses well-known,
 published techniques: alpha-beta search with aspiration windows, late move reductions, null-move and futility
-pruning, singular extensions, correction history, Lazy SMP, magic bitboards, and an NNUE evaluation with king
-and material buckets. These are written in my own code, and the network uses its own file format (DRNNUE03).
-Two parts follow Stockfish's design closely; they are credited below.
+pruning, singular extensions, correction history, history-based move ordering (including history split by
+threatened squares), Lazy SMP, magic bitboards, and an NNUE evaluation with king and material buckets. These are
+written in my own code, and the network uses its own file format (DRNNUE03). Two parts follow Stockfish's design
+closely; they are credited below.
 
 ## Credits
 
 - **Stockfish** ([official-stockfish/Stockfish](https://github.com/official-stockfish/Stockfish), GPL-3.0): the
   transposition-table replacement scheme (three 10-byte entries per 32-byte bucket, generation ageing) and the
   static exchange evaluation (`see_ge`) follow Stockfish's design. They are re-implemented in my own code. No
-  Stockfish source code, network or evaluation labels are used.
-- **Lichess open database** ([database.lichess.org](https://database.lichess.org), CC0): part of the training
-  corpus is filtered, high-quality positions from human games on Lichess. Only the board positions were taken.
-  Every position was relabelled by my own engines (the best NARC Genesys version at that point), so no
-  evaluations from Lichess or from any other engine are in the training data. The rest of the corpus is NARC's
-  own self-play.
+  Stockfish source code, network or evaluation scores are used.
+- **Training positions.** Every score in the training data was produced by my own engines (mostly NARC Genesys
+  during its development, and my earlier engines NEXOR, CeylonDemon and DarkReality). The board positions come
+  from these sources:
+  - self-play games of NARC Genesys and of my earlier engines;
+  - **Lichess open database** ([database.lichess.org](https://database.lichess.org), CC0): filtered, high-quality
+    positions from human games. Only the board positions and game results were taken;
+  - **Stockfish self-play games published by LAION** (CC-BY-4.0): board positions and the games' results. The
+    positions were rescored by my own engine; no Stockfish evaluations are used;
+  - **Stoofvlees self-play games** (CC-BY-4.0): board positions only, scored by my own engine.
 - The perft reference positions used by `perftsuite` (and by part of `bench`) are from the
   [Chess Programming Wiki](https://www.chessprogramming.org/Perft_Results).

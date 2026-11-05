@@ -3,10 +3,10 @@
 <p align="center"><img src="assets/narc-genesys-banner.png" alt="NARC Genesys" width="640"></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Strength-3600%2B-brightgreen" alt="Strength: 3600+">
+  <img src="https://img.shields.io/badge/Strength-3600%2B-brightgreen" alt="Strength: 3600+ blitz">
   <img src="https://img.shields.io/badge/Homemade-orange" alt="Homemade">
   <a href="https://github.com/Madushan996/NARC/releases/tag/v5.1"><img src="https://img.shields.io/github/v/release/Madushan996/NARC" alt="Release"></a>
-  <a href="https://github.com/Madushan996/NARC/releases/tag/v5.1"><img src="https://img.shields.io/github/downloads/Madushan996/NARC/v5.1/total" alt="Downloads"></a>
+ <a href="https://github.com/Madushan996/NARC/releases"><img src="https://img.shields.io/github/downloads/Madushan996/NARC/total" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
 </p>
 

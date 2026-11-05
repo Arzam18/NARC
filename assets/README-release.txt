@@ -1,6 +1,6 @@
 NARC Genesys @VERSION@
 UCI chess engine written in C++ by Madushan Dissanayake, Sri Lanka.
-The fifth generation of the NARC engines (previous release: NARC NEXT 4.1).
+The fifth generation of the NARC engines (previous release: NARC Genesys 5.0; before it, NARC NEXT 4.1).
 
 Which executable?
   NARC-Genesys-@VERSION@-avx512.exe   CPUs with AVX-512 (Intel Ice Lake / Rocket Lake and newer server or
@@ -12,7 +12,8 @@ Which executable?
   NARC-Genesys-@VERSION@-generic.exe  any x86-64 CPU. Slowest; use it if no other build starts.
 If unsure, try bmi2 first; if it closes at once or the GUI reports an error, go down the list.
 
-The NNUE network is embedded in each executable; no other files are needed.
+The NNUE network is embedded in each executable; no other files are needed. Since 5.1 the network is four times
+wider (25 MB); it runs fastest on CPUs with a large cache.
 NARC Genesys has no GUI of its own: add it to a UCI chess GUI such as Arena, Cute Chess, Banksia or En Croissant.
 The .bmp next to each executable is its logo for Arena; the banner and icon are in logo\, and the icon is
 embedded in each .exe.

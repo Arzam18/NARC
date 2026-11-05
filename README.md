@@ -48,6 +48,11 @@ Against NARC Genesys 5.0: +29.9 +- 13.8 Elo (SPRT, 756 games at 8+0.08).
 
 ## What's new in 5.1
 
+NARC Genesys 5.1 is a small update, released two days after 5.0. During long time control testing after the 5.0
+release, I found that the engine misjudged some positions and lost games because of it, mostly in longer games.
+5.1 aims to fix this with a more accurate evaluation and better move ordering. The Elo figures below were
+measured at a short time control (8+0.08); results at longer time controls are still being collected.
+
 - **A wider network:** 1024 neurons per perspective instead of 256, trained from scratch on the same 249M positions
   as 5.0, with the same labels from my own engines. It evaluates positions more accurately (validation loss
   0.014254 against 5.0's 0.014808) but runs 25-40% slower; CPUs with a large cache lose the least speed.

@@ -63,7 +63,8 @@ struct SearchFeatures {
     bool tt_pv = false;       // TT "was on the PV" bit, TT-capture and killer/counter terms in late move reductions
     bool probcut = false;     // ProbCut: a capture that beats beta by a margin at reduced depth cuts the node
     // Batch 2 (under test, off by default)
-    bool threat_hist = false;      // quiet history split by whether the from / to squares are attacked
+    bool threat_hist = true;       // quiet history split by whether the from / to squares are attacked
+                                   // (on since 5.1: +13.2 +- 12.7 in 892 games at 8+0.08)
     bool cont_hist4 = false;       // continuation history from the move 4 plies back
     bool fifty_damp = false;       // static eval shrinks towards 0 as the fifty-move counter rises
     bool qs_evasion = false;       // quiescence: after one evasion that isn't mated, skip quiet evasions

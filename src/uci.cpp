@@ -27,7 +27,7 @@ namespace {
 #ifndef NARC_TAG
 #define NARC_TAG ""   // set by build.sh from TAG (e.g. the network: kb4, kb64)
 #endif
-constexpr const char* NAME = "NARC Genesys 5.0";
+constexpr const char* NAME = "NARC Genesys 5.1";
 constexpr const char* AUTHOR = "Madushan Dissanayake";
 constexpr const char* COUNTRY = "Sri Lanka";
 const std::string FULL_NAME = std::string(NAME) + (NARC_TAG[0] ? std::string(" ") + NARC_TAG : std::string());

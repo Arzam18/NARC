@@ -1,1 +1,207 @@
+name: NARC Genesys 5.1 - Android ARM64 NEON + Dotprod
 
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-validation:
+    name: Validate source, network and reference tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout NARC Genesys 5.1 source
+        uses: actions/checkout@v4
+
+      - name: Download the official v5.1 NNUE network
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p networks
+          NETWORK_URL="https://raw.githubusercontent.com/Madushan996/NARC/v5.1/networks/narc-genesys.nnue"
+          curl --fail --location --retry 4 --retry-delay 2 "$NETWORK_URL" -o networks/narc-genesys.nnue
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          p = Path("networks/narc-genesys.nnue")
+          b = p.read_bytes()
+          if len(b) < 36 or b[:8] != b"DRNNUE03":
+              raise SystemExit(f"Invalid DRNNUE03 header or short file: {len(b):,} bytes")
+          shape = struct.unpack_from("<7I", b, 8)
+          expected = (12288, 1024, 8, 16, 255, 64, 400)
+          if shape != expected:
+              raise SystemExit(f"Wrong v5.1 network dimensions: {shape}; expected {expected}")
+          inputs, hidden, buckets, *_ = shape
+          payload_size = 36 + 2 * inputs * hidden + 2 * hidden + 2 * buckets * 2 * hidden + 4 * buckets
+          if len(b) < payload_size or len(b) > payload_size + 64:
+              raise SystemExit(f"Unexpected v5.1 network size {len(b):,}; expected payload {payload_size:,} (plus at most 64 bytes padding)")
+          print(f"Validated v5.1 network: {len(b):,} bytes; payload {payload_size:,} bytes")
+          PY
+          sha256sum networks/narc-genesys.nnue | tee build-network.sha256
+
+      - name: Build generic host reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          NET="$PWD/networks/narc-genesys.nnue" bash ./build.sh generic build/narc-genesys-5.1-host
+
+      - name: Run perft, scalar NNUE and fixed bench checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="build/narc-genesys-5.1-host"
+          "$BIN" perftsuite | tee perftsuite.txt
+          "$BIN" nnuecheck 20000 | tee nnuecheck-scalar.txt
+          grep -Eq 'nnuecheck: [0-9]+ evaluations, 0 mismatches' nnuecheck-scalar.txt
+          "$BIN" bench 12 | tee bench.txt
+          grep -Eq '^1146093 nodes ' bench.txt
+
+      - name: Build and test x86 AVX2 NNUE against scalar reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          NET="$PWD/networks/narc-genesys.nnue" bash ./build.sh avx2 build/narc-genesys-5.1-host-avx2
+          if grep -qw avx2 /proc/cpuinfo; then
+            build/narc-genesys-5.1-host-avx2 nnuecheck 20000 | tee nnuecheck-avx2.txt
+            grep -Eq 'nnuecheck: [0-9]+ evaluations, 0 mismatches' nnuecheck-avx2.txt
+          else
+            echo 'Runner CPU lacks AVX2; AVX2 differential runtime test skipped.' | tee nnuecheck-avx2.txt
+          fi
+
+      - name: Upload host validation logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: NARC-Genesys-5.1-Host-Validation
+          path: |
+            build-network.sha256
+            perftsuite.txt
+            nnuecheck-scalar.txt
+            nnuecheck-avx2.txt
+            bench.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  android-arm64:
+    name: Build Android ARM64 NEON and Dotprod targets
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout NARC Genesys 5.1 source
+        uses: actions/checkout@v4
+
+      - name: Install Android NDK r27c
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: false
+
+      - name: Download and validate official v5.1 NNUE network
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p networks
+          NETWORK_URL="https://raw.githubusercontent.com/Madushan996/NARC/v5.1/networks/narc-genesys.nnue"
+          curl --fail --location --retry 4 --retry-delay 2 "$NETWORK_URL" -o networks/narc-genesys.nnue
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          p = Path("networks/narc-genesys.nnue")
+          b = p.read_bytes()
+          if len(b) < 36 or b[:8] != b"DRNNUE03":
+              raise SystemExit(f"Invalid DRNNUE03 header: {len(b):,} bytes")
+          shape = struct.unpack_from("<7I", b, 8)
+          if shape != (12288, 1024, 8, 16, 255, 64, 400):
+              raise SystemExit(f"Unexpected NARC 5.1 network shape: {shape}")
+          inputs, hidden, buckets, *_ = shape
+          expected = 36 + 2 * inputs * hidden + 2 * hidden + 2 * buckets * 2 * hidden + 4 * buckets
+          if not expected <= len(b) <= expected + 64:
+              raise SystemExit(f"Wrong network byte count {len(b):,}; expected {expected:,} plus at most 64 bytes padding")
+          print(f"Network verified: {len(b):,} bytes; 1024-wide NNUE")
+          PY
+          sha256sum networks/narc-genesys.nnue | tee build-network.sha256
+
+      - name: Build NEON baseline and Dotprod target
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: bash scripts/build-android.sh all
+
+      - name: Verify Android ELF and inspect generated SIMD instructions
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p build/verification
+          for variant in neon dotprod; do
+            BIN="build/android-arm64/$variant/narc-genesys-5.1-android-arm64-$variant"
+            "$TOOLCHAIN/llvm-readelf" -h "$BIN" > "build/verification/$variant-elf-header.txt"
+            grep -q 'AArch64' "build/verification/$variant-elf-header.txt"
+            "$TOOLCHAIN/llvm-readelf" -l "$BIN" > "build/verification/$variant-program-headers.txt"
+            grep -q '/system/bin/linker64' "build/verification/$variant-program-headers.txt"
+            "$TOOLCHAIN/llvm-readelf" -d "$BIN" > "build/verification/$variant-dynamic.txt"
+            if grep -q 'libc++_shared.so' "build/verification/$variant-dynamic.txt"; then
+              echo "Unexpected libc++_shared.so dependency in $variant" >&2
+              exit 1
+            fi
+            "$TOOLCHAIN/llvm-objdump" -d "$BIN" > "build/verification/$variant-disassembly.txt"
+          done
+          # Both engine variants must contain real Advanced SIMD code in the NNUE hot path.
+          grep -Eq '\b(add|sub|smax|smin|smull|smull2|smlal|smlal2|mul)\s+v[0-9]+' build/verification/neon-disassembly.txt
+          grep -Eq '\b(add|sub|smax|smin|smull|smull2|smlal|smlal2|mul)\s+v[0-9]+' build/verification/dotprod-disassembly.txt
+          if grep -Eiq '\bsdot\b|\budot\b' build/verification/neon-disassembly.txt; then
+            echo 'Dotprod instruction found in baseline NEON binary' >&2
+            exit 1
+          fi
+          if grep -Eiq '\budot\b' build/verification/dotprod-disassembly.txt; then
+            count=$(grep -Eic '\budot\b' build/verification/dotprod-disassembly.txt)
+            echo "Exact UDOT SCReLU kernel confirmed in Dotprod binary ($count UDOT instructions in disassembly)." | tee build/verification/dotprod-instructions.txt
+          else
+            echo 'ERROR: Dotprod target lacks the expected exact UDOT SCReLU kernel.' >&2
+            exit 1
+          fi
+          cp build-network.sha256 build/verification/
+          printf 'NARC Genesys 5.1 Android ELF and SIMD inspection completed.\n' | tee build/verification/verification.txt
+
+      - name: Package binaries and verification reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact/NEON artifact/Dotprod
+          cp build/android-arm64/neon/narc-genesys-5.1-android-arm64-neon artifact/NEON/
+          cp build/android-arm64/neon/BUILD-INFO.txt build/android-arm64/neon/SHA256SUMS artifact/NEON/
+          cp build/android-arm64/dotprod/narc-genesys-5.1-android-arm64-dotprod artifact/Dotprod/
+          cp build/android-arm64/dotprod/BUILD-INFO.txt build/android-arm64/dotprod/SHA256SUMS artifact/Dotprod/
+          cp build/verification/* artifact/
+          cat > artifact/PHONE-TESTING.txt <<'INFO'
+          On the Samsung Galaxy A16 5G, extract the artifact and test each folder separately in Termux.
+
+          NEON baseline:
+            cd NEON
+            chmod +x ./narc-genesys-5.1-android-arm64-neon
+            ./narc-genesys-5.1-android-arm64-neon perftsuite
+            ./narc-genesys-5.1-android-arm64-neon nnuecheck 20000
+            ./narc-genesys-5.1-android-arm64-neon bench 12
+            { printf 'uci\nisready\nposition startpos\ngo depth 5\n'; sleep 8; printf 'quit\n'; } | ./narc-genesys-5.1-android-arm64-neon
+
+          Dotprod-target:
+            cd ../Dotprod
+            chmod +x ./narc-genesys-5.1-android-arm64-dotprod
+            ./narc-genesys-5.1-android-arm64-dotprod perftsuite
+            ./narc-genesys-5.1-android-arm64-dotprod nnuecheck 20000
+            ./narc-genesys-5.1-android-arm64-dotprod bench 12
+            { printf 'uci\nisready\nposition startpos\ngo depth 5\n'; sleep 8; printf 'quit\n'; } | ./narc-genesys-5.1-android-arm64-dotprod
+
+          The NEON binary uses the baseline exact NEON kernel. The Dotprod binary uses the exact UDOT decomposition and preserves signed 16-bit model weights without quantization.
+          Build success does not imply runtime stability or preserved Elo. Record NPS and strength separately.
+          INFO
+          (cd artifact && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+
+      - name: Upload Android ARM64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NARC-Genesys-5.1-Android-ARM64-NEON-Dotprod
+          path: artifact/*
+          if-no-files-found: error
+          retention-days: 30

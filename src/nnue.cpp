@@ -1,6 +1,7 @@
 // NARC Genesys - NNUE evaluation.
 #include "nnue.h"
 
+#include <bit>
 #include <cstring>
 #include <fstream>
 #include <new>
@@ -9,6 +10,8 @@
 
 #if defined(__AVX2__)
 #include <immintrin.h>
+#elif defined(__aarch64__)
+#include <arm_neon.h>
 #endif
 
 // The default network is embedded in the executable (NARC_NET is set by build.sh).
@@ -118,9 +121,14 @@ inline int feature(const View& v, Color persp, Piece p, int sq) {
     return v.base + (color_of(p) != persp ? 384 : 0) + type_of(p) * 64 + (sq ^ v.flip);
 }
 
+// Deliberately scalar reference used only by units_full()/nnuecheck. Keeping this independent of
+// architecture-specific code lets an on-device NNUE check compare NEON inference against a true reference.
 template <int H>
-inline void add_row(i16* acc, const i16* row) {
-    for (int i = 0; i < H; i++) acc[i] += row[i];
+inline void add_row_scalar(i16* acc, const i16* row) {
+    for (int i = 0; i < H; i++) {
+        const u16 bits = u16(u16(acc[i]) + u16(row[i]));
+        acc[i] = std::bit_cast<i16>(bits);
+    }
 }
 
 // dst = src + sum(adds) - sum(subs) in one pass (and the same into dst2 when given). With AVX2 the vector is
@@ -147,19 +155,27 @@ inline void update(i16* dst, i16* dst2, const i16* src, const i16* const* adds, 
         if (dst2)
             for (int k = 0; k < REGS; k++) _mm256_store_si256(reinterpret_cast<__m256i*>(dst2 + t) + k, r[k]);
     }
+#elif defined(__aarch64__)
+    // Match scalar i16 wraparound exactly; support dst == src (the king-bucket cache path).
+    for (int i = 0; i < H; i += 8) {
+        int16x8_t value = vld1q_s16(src + i);
+        for (int a = 0; a < na; a++) value = vaddq_s16(value, vld1q_s16(adds[a] + i));
+        for (int s = 0; s < ns; s++) value = vsubq_s16(value, vld1q_s16(subs[s] + i));
+        vst1q_s16(dst + i, value);
+        if (dst2) vst1q_s16(dst2 + i, value);
+    }
 #else
     if (dst != src) std::memcpy(dst, src, sizeof(i16) * H);
     for (int a = 0; a < na; a++)
-        for (int i = 0; i < H; i++) dst[i] += adds[a][i];
+        for (int i = 0; i < H; i++) dst[i] = std::bit_cast<i16>(u16(u16(dst[i]) + u16(adds[a][i])));
     for (int s = 0; s < ns; s++)
-        for (int i = 0; i < H; i++) dst[i] -= subs[s][i];
+        for (int i = 0; i < H; i++) dst[i] = std::bit_cast<i16>(u16(u16(dst[i]) - u16(subs[s][i])));
     if (dst2) std::memcpy(dst2, dst, sizeof(i16) * H);
 #endif
 }
 
-// Sum over both perspectives of clamp(acc, 0, QA)^2 * w, exactly. Per-lane i32 sums are bounded: within one
-// perspective each lane adds H / 8 products of at most 255 * 255 * 127 (128 products, 1.06e9, at H = 1024), below
-// 2^31; each perspective's lanes are folded into the i64 total separately.
+// Sum over both perspectives of clamp(acc, 0, QA)^2 * w. The AArch64 path widens each exact i32 product
+// into i64 before accumulation; the scalar reference uses i64 throughout.
 template <int H>
 inline i64 screlu_dot(const i16* us, const i16* them, const i16* w_us, const i16* w_them) {
     static_assert(H % 16 == 0 && H <= 1024, "the i32 lane sums are proven only up to 1024");
@@ -185,6 +201,73 @@ inline i64 screlu_dot(const i16* us, const i16* them, const i16* w_us, const i16
         _mm256_store_si256(reinterpret_cast<__m256i*>(lanes), sum);
         for (i32 l : lanes) total += l;
     }
+#elif defined(__aarch64__) && defined(__ARM_FEATURE_DOTPROD)
+    // Exact UDOT decomposition for clamp(acc, 0, 255)^2 * signed_i16_weight.
+    // Split x^2 into two unsigned bytes and each i16 weight into an unsigned low byte
+    // plus a signed high byte. Bias the signed high byte by 128 for UDOT, then subtract
+    // the exact 128*sum(activation-byte) correction. No model weight is quantized.
+    const int16x8_t zero = vdupq_n_s16(0), qa = vdupq_n_s16(QA);
+    for (int side = 0; side < 2; side++) {
+        const i16* a = side ? them : us;
+        const i16* w = side ? w_them : w_us;
+        uint32x4_t dot00 = vdupq_n_u32(0), dot10 = vdupq_n_u32(0);
+        uint32x4_t dot01 = vdupq_n_u32(0), dot11 = vdupq_n_u32(0);
+        uint16x8_t sum_a_lo = vdupq_n_u16(0), sum_a_hi = vdupq_n_u16(0);
+        for (int i = 0; i < H; i += 16) {
+            const int16x8_t x0 = vminq_s16(vmaxq_s16(vld1q_s16(a + i), zero), qa);
+            const int16x8_t x1 = vminq_s16(vmaxq_s16(vld1q_s16(a + i + 8), zero), qa);
+            const uint16x8_t sq0 = vmulq_u16(vreinterpretq_u16_s16(x0), vreinterpretq_u16_s16(x0));
+            const uint16x8_t sq1 = vmulq_u16(vreinterpretq_u16_s16(x1), vreinterpretq_u16_s16(x1));
+            const uint8x16_t a_lo = vcombine_u8(vmovn_u16(sq0), vmovn_u16(sq1));
+            const uint8x16_t a_hi = vcombine_u8(vshrn_n_u16(sq0, 8), vshrn_n_u16(sq1, 8));
+
+            const int16x8_t w0 = vld1q_s16(w + i), w1 = vld1q_s16(w + i + 8);
+            const uint8x16_t w_lo = vcombine_u8(vmovn_u16(vreinterpretq_u16_s16(w0)),
+                                                vmovn_u16(vreinterpretq_u16_s16(w1)));
+            const int8x8_t whi0 = vmovn_s16(vshrq_n_s16(w0, 8));
+            const int8x8_t whi1 = vmovn_s16(vshrq_n_s16(w1, 8));
+            const uint8x16_t w_hi_bias = vcombine_u8(
+                vadd_u8(vreinterpret_u8_s8(whi0), vdup_n_u8(128)),
+                vadd_u8(vreinterpret_u8_s8(whi1), vdup_n_u8(128)));
+
+            dot00 = vdotq_u32(dot00, a_lo, w_lo);
+            dot10 = vdotq_u32(dot10, a_hi, w_lo);
+            dot01 = vdotq_u32(dot01, a_lo, w_hi_bias);
+            dot11 = vdotq_u32(dot11, a_hi, w_hi_bias);
+            sum_a_lo = vpadalq_u8(sum_a_lo, a_lo);
+            sum_a_hi = vpadalq_u8(sum_a_hi, a_hi);
+        }
+        const i64 s00 = vaddvq_u32(dot00), s10 = vaddvq_u32(dot10);
+        const i64 s01 = vaddvq_u32(dot01), s11 = vaddvq_u32(dot11);
+        const i64 a_lo_sum = vaddlvq_u16(sum_a_lo), a_hi_sum = vaddlvq_u16(sum_a_hi);
+        total += s00 + 256 * s10 + 256 * (s01 - 128 * a_lo_sum) +
+                 65536 * (s11 - 128 * a_hi_sum);
+    }
+#elif defined(__aarch64__)
+    // Exact 16-bit-weight SCReLU dot product for the baseline NEON build. Keep x*w in
+    // signed i32, widen each product to i64 before accumulation, and never narrow weights.
+    const int16x8_t zero = vdupq_n_s16(0);
+    const int16x8_t qa = vdupq_n_s16(QA);
+    int64x2_t sum0 = vdupq_n_s64(0), sum1 = vdupq_n_s64(0);
+    int64x2_t sum2 = vdupq_n_s64(0), sum3 = vdupq_n_s64(0);
+    for (int side = 0; side < 2; side++) {
+        const i16* a = side ? them : us;
+        const i16* w = side ? w_them : w_us;
+        for (int i = 0; i < H; i += 8) {
+            const int16x8_t x = vminq_s16(vmaxq_s16(vld1q_s16(a + i), zero), qa);
+            const int16x8_t weight = vld1q_s16(w + i);
+            int32x4_t lo = vmull_s16(vget_low_s16(x), vget_low_s16(weight));
+            int32x4_t hi = vmull_s16(vget_high_s16(x), vget_high_s16(weight));
+            lo = vmulq_s32(lo, vmovl_s16(vget_low_s16(x)));
+            hi = vmulq_s32(hi, vmovl_s16(vget_high_s16(x)));
+            sum0 = vaddq_s64(sum0, vmovl_s32(vget_low_s32(lo)));
+            sum1 = vaddq_s64(sum1, vmovl_s32(vget_high_s32(lo)));
+            sum2 = vaddq_s64(sum2, vmovl_s32(vget_low_s32(hi)));
+            sum3 = vaddq_s64(sum3, vmovl_s32(vget_high_s32(hi)));
+        }
+    }
+    const int64x2_t sums = vaddq_s64(vaddq_s64(sum0, sum1), vaddq_s64(sum2, sum3));
+    total = vgetq_lane_s64(sums, 0) + vgetq_lane_s64(sums, 1);
 #else
     for (int side = 0; side < 2; side++) {
         const i16* a = side ? them : us;
@@ -204,6 +287,23 @@ inline int output(const Network& net, const Position& pos, const i16* us, const 
     const int bucket = std::min(std::max(pieces - 2, 0) / 4, OUTPUT_BUCKETS - 1);
     i64 total = screlu_dot<H>(us, them, net.out_w[bucket][0], net.out_w[bucket][1]);
     i64 hidden = total / QA + net.out_b[bucket];     // C++ division truncates toward zero, as the format expects
+    return int(hidden * SCALE / (QA * QB));
+}
+
+template <int H>
+inline int output_scalar(const Network& net, const Position& pos, const i16* us, const i16* them) {
+    const int pieces = popcount(pos.pieces());
+    const int bucket = std::min(std::max(pieces - 2, 0) / 4, OUTPUT_BUCKETS - 1);
+    i64 total = 0;
+    for (int side = 0; side < 2; side++) {
+        const i16* a = side ? them : us;
+        const i16* w = side ? net.out_w[bucket][1] : net.out_w[bucket][0];
+        for (int i = 0; i < H; i++) {
+            const i64 x = a[i] < 0 ? 0 : (a[i] > QA ? QA : a[i]);
+            total += x * x * i64(w[i]);
+        }
+    }
+    const i64 hidden = total / QA + net.out_b[bucket];
     return int(hidden * SCALE / (QA * QB));
 }
 
@@ -249,11 +349,11 @@ int Evaluator::units_full(const Position& pos) {
             Bitboard occ = pos.pieces();
             while (occ) {
                 int sq = pop_lsb(occ);
-                add_row<H>(acc[persp], net.ft + size_t(feature(v, persp, pos.piece_on(sq), sq)) * H);
+                add_row_scalar<H>(acc[persp], net.ft + size_t(feature(v, persp, pos.piece_on(sq), sq)) * H);
             }
         }
         Color us = pos.side_to_move();
-        return output<H>(net, pos, acc[us], acc[~us]);
+        return output_scalar<H>(net, pos, acc[us], acc[~us]);
     });
 }
 
